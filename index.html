@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Seat Finder 3D Circuit</title>
+<style>
+:root{--bg:#f6f5f1;--fg:#1f1e1b;--card:#fff;--mut:#6b6a64;--ok:#1d9e5f;--no:#d6453d;--bd:#dcdad2;--acc:#2f5bd8;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17181b;--fg:#ecebe6;--card:#222328;--mut:#9a9990;--bd:#34353b;--acc:#7b9bff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17181b;--fg:#ecebe6;--card:#222328;--mut:#9a9990;--bd:#34353b;--acc:#7b9bff;color-scheme:dark}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.w{max-width:1000px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:0 0 2px}p.s{margin:0 0 12px;color:var(--mut)}
+.g{display:grid;grid-template-columns:1fr 260px;gap:12px}
+@media(max-width:760px){.g{grid-template-columns:1fr}}
+#c{width:100%;height:480px;border:1px solid var(--bd);border-radius:12px;background:var(--card);overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:100%}
+.p{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}
+.r{display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--bd);font-size:13px;font-variant-numeric:tabular-nums}
+.ok{color:var(--ok)}.no{color:var(--no)}
+.lg{display:flex;align-items:center;gap:8px;font-size:13px;padding:2px 0}
+.lg i{width:22px;height:5px;border-radius:3px;display:inline-block}
+.hint{font-size:12px;color:var(--mut);margin-top:8px}
+label.t{display:flex;gap:6px;align-items:center;font-size:13px;margin:8px 0}
+h2{font-size:14px;margin:12px 0 4px}
+</style></head><body><div class="w">
+<h1>Smart Library Seat Finder: 3D circuit</h1>
+<p class="s">ESP32 DevKit, four FSR pressure sensors, each in a voltage divider with a 10 kΩ resistor. Click a sensor to press it.</p>
+<div class="g">
+ <div id="c"></div>
+ <div class="p">
+  <b>Wires</b>
+  <div class="lg"><i style="background:#d6453d"></i>3V3 to FSR leg 1</div>
+  <div class="lg"><i style="background:#f2c230"></i>FSR leg 2 + resistor to GPIO</div>
+  <div class="lg"><i style="background:#222"></i>Resistor to GND</div>
+  <h2>Live readings</h2>
+  <div id="rows"></div>
+  <label class="t"><input type="checkbox" id="lb" checked> Show labels</label>
+  <div class="hint">Drag to rotate, scroll or pinch to zoom, click a round sensor to press it. Voltages are approximate. Pins 32 to 35 are ADC1, which keeps working while WiFi is on.</div>
+ </div>
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+var box=document.getElementById('c'),W=box.clientWidth,H=box.clientHeight;
+var scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,W/H,0.1,200);
+var ren=new THREE.WebGLRenderer({antialias:true,alpha:true});
+ren.setPixelRatio(Math.min(devicePixelRatio,2));ren.setSize(W,H);box.appendChild(ren.domElement);
+scene.add(new THREE.AmbientLight(0xffffff,0.75));
+var dl=new THREE.DirectionalLight(0xffffff,0.6);dl.position.set(4,10,6);scene.add(dl);
+function M(c,e){return new THREE.MeshLambertMaterial({color:c,emissive:e||0});}
+function B(w,h,d,c,x,y,z,p){var m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);(p||scene).add(m);return m;}
+function Cy(r,h,c,x,y,z,p){var m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,20),M(c));m.position.set(x,y,z);(p||scene).add(m);return m;}
+var labels=[];
+function label(t,x,y,z,s){var c=document.createElement('canvas');c.width=256;c.height=64;var g=c.getContext('2d');
+ g.fillStyle='rgba(20,22,28,0.88)';g.fillRect(0,0,256,64);g.fillStyle='#fff';g.font='bold 30px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(t,128,34);
+ var sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c)}));sp.position.set(x,y,z);sp.scale.set(s*4,s,1);scene.add(sp);labels.push(sp);}
+
+var grid=new THREE.GridHelper(20,20,0x888888,0xaaaaaa);grid.position.set(0,-0.1,-2.5);grid.material.opacity=0.25;grid.material.transparent=true;scene.add(grid);
+
+/* ESP32 DevKit, long axis along x */
+B(6,0.15,2.4,0x0f2a5a,0,0.1,0);
+B(2,0.22,1.4,0xb9bcc2,0.5,0.28,0);
+B(0.6,0.26,0.8,0xcfd2d8,-3.0,0.3,0);
+B(0.5,0.12,1.6,0xc9a24a,2.7,0.2,0);
+B(0.35,0.12,0.35,0x333333,-2.2,0.22,0.8);B(0.35,0.12,0.35,0x333333,-2.2,0.22,-0.8);
+Cy(0.07,0.06,0x2f5bd8,-1.5,0.2,0.75).material.emissive.setHex(0x1030a0);
+label('ESP32 DevKit',0.3,1.2,1.5,0.55);label('USB',-3.0,0.9,0,0.4);label('Antenna',2.7,0.9,0,0.4);
+
+/* pins along the z=-1.1 edge */
+var pinX={'3V3':-2.2,32:-1.1,33:-0.37,34:0.37,35:1.1,'GND':2.2},pinPos={};
+Object.keys(pinX).forEach(function(k){var x=pinX[k],c=k==='3V3'?0xd6453d:k==='GND'?0x222222:0xc9a24a;
+ Cy(0.09,0.35,c,x,0.32,-1.05);pinPos[k]=new THREE.Vector3(x,0.52,-1.05);
+ label(k==='3V3'||k==='GND'?k:'GPIO'+k,x,0.95,-1.55,0.3);});
+
+function wire(a,b,col,lift,off){var mid=a.clone().add(b).multiplyScalar(0.5);mid.y+=lift;mid.z+=off;
+ var cv=new THREE.CatmullRomCurve3([a,new THREE.Vector3(a.x,a.y+lift*0.6,a.z+off*0.3),mid,new THREE.Vector3(b.x,b.y+lift*0.6,b.z),b]);
+ var mat=M(col);scene.add(new THREE.Mesh(new THREE.TubeGeometry(cv,40,0.045,6,false),mat));return mat;}
+
+/* four seat modules */
+var gp=[32,33,34,35],mxs=[-3.9,-1.3,1.3,3.9],discs=[],sig=[],pressed=[0,0,0,0];
+mxs.forEach(function(mx,i){
+ B(2.2,0.05,2.8,0x6b6a64,mx+0.2,-0.05,-5.0);
+ var d=Cy(0.55,0.06,0x2a2a2a,mx,0.04,-5.8);Cy(0.4,0.07,0x777777,0,0.01,0,d);d.userData.i=i;d.children[0].userData.i=i;discs.push(d);
+ B(0.35,0.03,1.4,0xd9d2b8,mx,0.03,-4.95);
+ B(0.12,0.04,0.2,0xc9a24a,mx-0.1,0.06,-4.35);B(0.12,0.04,0.2,0xc9a24a,mx+0.1,0.06,-4.35);
+ var r=Cy(0.08,0.7,0xd8c08a,mx+0.45,0.14,-3.7);r.rotation.z=Math.PI/2;
+ [[-0.18,0x6b3a1a],[-0.06,0x111111],[0.06,0xe07a1f]].forEach(function(b){var bd=Cy(0.09,0.05,b[1],mx+0.45+b[0],0.14,-3.7);bd.rotation.z=Math.PI/2;});
+ var p1=new THREE.Vector3(mx-0.1,0.12,-4.35),p2=new THREE.Vector3(mx+0.1,0.12,-4.35);
+ var rl=new THREE.Vector3(mx+0.1,0.14,-3.7),rr=new THREE.Vector3(mx+0.8,0.14,-3.7);
+ wire(pinPos['3V3'],p1,0xd6453d,1.1+i*0.25,-0.5-i*0.3);
+ wire(p2,rl,0xe07a1f,0.25,0);
+ sig.push(wire(pinPos[gp[i]],rl,0xf2c230,0.7+i*0.18,0.4));
+ wire(rr,pinPos['GND'],0x222222,0.9+i*0.25,-0.3-i*0.2);
+ label('Seat '+(i+1)+' FSR',mx,0.9,-6.6,0.3);
+ if(i===0){label('FSR 402',mx-0.9,0.8,-5.8,0.28);label('10k',mx+0.45,0.75,-3.2,0.28);}
+});
+label('3V3 bus',-2.9,1.5,-2.6,0.28);
+
+var rows=document.getElementById('rows');
+function ui(){rows.innerHTML='';discs.forEach(function(d,i){var on=pressed[i],v=on?(2.3+Math.random()*0.5):0.02,adc=Math.round(v/3.3*4095);
+ d.scale.y=on?0.4:1;d.material.color.setHex(on?0xd6453d:0x2a2a2a);sig[i].emissive.setHex(on?0x7a5a00:0);
+ var r=document.createElement('div');r.className='r';
+ r.innerHTML='<span>Seat '+(i+1)+' (GPIO'+gp[i]+')</span><span>'+v.toFixed(2)+' V · '+adc+'</span><span class="'+(on?'no':'ok')+'">'+(on?'taken':'free')+'</span>';rows.appendChild(r);});}
+ui();
+document.getElementById('lb').onchange=function(e){labels.forEach(function(s){s.visible=e.target.checked;});};
+
+var th=0.5,ph=0.9,rad=15,dn=false,mv=0,lx=0,ly=0,pts={},pd=0,tgt=new THREE.Vector3(0,0,-2.6);
+function setCam(){cam.position.set(tgt.x+rad*Math.sin(ph)*Math.sin(th),tgt.y+rad*Math.cos(ph),tgt.z+rad*Math.sin(ph)*Math.cos(th));cam.lookAt(tgt);}setCam();
+var el=ren.domElement,ray=new THREE.Raycaster(),v2=new THREE.Vector2();
+var hit=[];discs.forEach(function(d){hit.push(d,d.children[0]);});
+el.addEventListener('pointerdown',function(e){pts[e.pointerId]=e;dn=true;mv=0;lx=e.clientX;ly=e.clientY;el.setPointerCapture(e.pointerId);var k=Object.keys(pts);if(k.length===2)pd=Math.hypot(pts[k[0]].clientX-pts[k[1]].clientX,pts[k[0]].clientY-pts[k[1]].clientY);});
+el.addEventListener('pointermove',function(e){if(!dn)return;pts[e.pointerId]=e;var k=Object.keys(pts);
+ if(k.length===2){var d=Math.hypot(pts[k[0]].clientX-pts[k[1]].clientX,pts[k[0]].clientY-pts[k[1]].clientY);rad=Math.min(30,Math.max(6,rad*pd/d));pd=d;mv=99;setCam();return;}
+ var dx=e.clientX-lx,dy=e.clientY-ly;lx=e.clientX;ly=e.clientY;mv+=Math.abs(dx)+Math.abs(dy);th-=dx*0.007;ph=Math.min(1.5,Math.max(0.15,ph-dy*0.007));setCam();});
+el.addEventListener('pointerup',function(e){delete pts[e.pointerId];dn=Object.keys(pts).length>0;
+ if(mv<6&&!dn){var r=el.getBoundingClientRect();v2.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(v2,cam);
+  var h=ray.intersectObjects(hit);if(h.length){var i=h[0].object.userData.i;pressed[i]=1-pressed[i];ui();}}});
+el.addEventListener('wheel',function(e){e.preventDefault();rad=Math.min(30,Math.max(6,rad+e.deltaY*0.012));setCam();},{passive:false});
+addEventListener('resize',function(){W=box.clientWidth;H=box.clientHeight;ren.setSize(W,H);cam.aspect=W/H;cam.updateProjectionMatrix();});
+(function loop(){requestAnimationFrame(loop);ren.render(scene,cam);})();
+</script></body></html>
